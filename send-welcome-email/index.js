@@ -8,18 +8,23 @@ var SENDWITHUS_API_BASE_URL = process.env.SENDWITHUS_API_BASE_URL;
 
 const SENDWITHUS_TEMPLATE_ID = "tem_9d6drBShr8HJRYHjBPQDdF4G";
 
-var parseSubscriptionId = function(event) {
-	// TEST UPDATE 2016-12-30
+var getMessageData = function(event) {
+    var msg = event.Records[0].Sns.Message;
+    var parsed = JSON.parse(msg);
 
-    // TODO
-    return "e6c8049e-3786-4edc-9b8d-fa34339ff30a";
+    console.log("Parsed message: ", parsed);
+
+    return parsed;
 }
 
-var getSubscriptionData = function(subscriptionId) {
-    // TODO
+var parseSubscriptionId = function(msgData) {
+    return msgData.subscription.id;
+}
+
+var getSubscriptionData = function(msgData) {
     return {
-        name: "Test Customer",
-        email: "tobyjsullivan@gmail.com"
+        name: msgData.subscription.name,
+        email: msgData.subscription.email
     };
 }
 
@@ -69,8 +74,9 @@ var sendEmail = function(subscription, onSuccess, onError) {
 exports.handler = (event, context, callback) => {
     console.log("Received event:", JSON.stringify(event));
     
-    var subscriptionId = parseSubscriptionId(event);
-    var subscription = getSubscriptionData(subscriptionId);
+    var msgData = getMessageData(event);
+    var subscriptionId = parseSubscriptionId(msgData);
+    var subscription = getSubscriptionData(msgData);
     
     // Send email via sendwithus
     sendEmail(subscription, function(res) {
