@@ -38,7 +38,7 @@ var sendEmail = function(subscription, onSuccess, onError) {
         },
         sender: {
             name: "Toby @ Tailored",
-            address: "tobyjsullivan@gmail.com"
+            address: "toby@tailored.style"
         }
     };
     var content = JSON.stringify(requestPayload);
