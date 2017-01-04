@@ -38,7 +38,8 @@ var sendEmail = function(subscription, onSuccess, onError) {
         },
         sender: {
             name: "Toby @ Tailored",
-            address: "toby@tailored.style"
+            address: "automated@mg.tailored.style",
+            reply_to: "toby@tailored.style"
         }
     };
     var content = JSON.stringify(requestPayload);
