@@ -7,7 +7,6 @@ var querystring = require('querystring');
 var STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 var STRIPE_API_BASE_URL = process.env.STRIPE_API_BASE_URL;
 var STRIPE_PLAN_ID = process.env.STRIPE_PLAN_ID;
-var TEST_TOKEN = process.env.TEST_TOKEN;
 
 var getMessageData = function(event) {
     console.log("Entering getMessageData");
@@ -31,9 +30,10 @@ var getSubscriptionData = function(msgData) {
 
     // TODO Fetch from Subscriptions Svc
     return {
-        name: "Test Tester",
-        email: "tester@gmail.com",
-        stripeToken: TEST_TOKEN
+        id: msgData.subscription.id,
+        name: msgData.subscription.name,
+        email: msgData.subscription.email,
+        stripeToken: msgData.subscription.stripeToken
     };
 };
 
@@ -95,7 +95,8 @@ var createCustomer = function(subscription) {
     var requestPayload = {
         'source': subscription.stripeToken,
         'email': subscription.email,
-        'description': `Customer for ${subscription.email}`
+        'description': `Customer for ${subscription.email}`,
+        'metadata[tailoredSubscriptionId]': subscription.id
     };
 
     return makeStripeRequest("customers", requestPayload)
