@@ -3,6 +3,7 @@
 var http = require('https');
 var url = require('url')
 
+var SUBSCRIPTIONS_API_BASE_URL = process.env.SUBSCRIPTIONS_API_BASE_URL;
 var SENDWITHUS_API_KEY = process.env.SENDWITHUS_API_KEY;
 var SENDWITHUS_API_BASE_URL = process.env.SENDWITHUS_API_BASE_URL;
 
@@ -27,6 +28,70 @@ var getSubscriptionData = function(msgData) {
         email: msgData.subscription.email
     };
 }
+
+var getSubscriptionData = function(subscriptionId) {
+    console.log("Entering getSubscriptionData");
+
+    var apiUrl = url.resolve(SUBSCRIPTIONS_API_BASE_URL, "subscriptions/"+subscriptionId);
+    var parsedUrl = url.parse(apiUrl);
+    var reqOptions = {
+        protocol: parsedUrl.protocol,
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.path,
+        port: parsedUrl.port,
+        method: 'GET',
+    };
+
+	console.log("Subscriptions API request options:", reqOptions);
+
+    return new Promise(function(fulfill, reject) {
+        var req = http.request(reqOptions, (res) => {
+            console.log("Recieved a response with code", res.statusCode);
+            fulfill(res);
+        });
+
+        req.on('error', reject);
+        req.end();
+    })
+    .then(function(res) {
+        // Reject on any non-200 response
+        if (res.statusCode >= 300) {
+            getResponseContent(res);
+            throw new Error(`Unexpected status code from Subscriptions Service: ${res.statusCode} ${res.statusMessage}`);
+        }
+
+        return res;
+    })
+    .then(getResponseContent).then(JSON.parse)
+    .then((json) => {
+        return {
+            id: json.id,
+            name: json.name,
+            email: json.email,
+            stripeToken: json.stripeToken
+        };
+    });
+};
+
+var getResponseContent = function(res) {
+    console.log("Entering getResponseContent");
+
+    return new Promise(function(fulfill, reject) {
+        var content = "";
+    
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+            content += chunk;
+        });
+        res.on('end', () => {
+            console.log("Response content:", content);
+            fulfill(content);
+        });
+        res.on('error', (e) => {
+            reject(e);
+        });
+    });
+};
 
 var sendEmail = function(subscription, onSuccess, onError) {
     var emailUrl = url.resolve(SENDWITHUS_API_BASE_URL, "send")
@@ -77,25 +142,28 @@ exports.handler = (event, context, callback) => {
     
     var msgData = getMessageData(event);
     var subscriptionId = parseSubscriptionId(msgData);
-    var subscription = getSubscriptionData(msgData);
-    
-    // Send email via sendwithus
-    sendEmail(subscription, function(res) {
-        console.log("Got response: " + res.statusCode);
-        
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-            console.log(`BODY: ${chunk}`);
+    // var subscription = getSubscriptionData(msgData);
+
+    getSubscriptionData(subscriptionId)
+    .then((subscription) => {
+        // Send email via sendwithus
+        sendEmail(subscription, function(res) {
+            console.log("Got response: " + res.statusCode);
+            
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+                console.log(`BODY: ${chunk}`);
+            });
+            res.on('end', () => {
+                console.log('No more data in response.');
+            });
+            // context.succeed();
+            
+            callback(null, 'Lambda executed');
+        }, function(e) {
+            console.log("Got error: " + e.message);
+            // context.done(null, 'FAILURE');
+            callback(null, 'FAILURE');
         });
-        res.on('end', () => {
-            console.log('No more data in response.');
-        });
-        // context.succeed();
-        
-        callback(null, 'Lambda executed');
-    }, function(e) {
-        console.log("Got error: " + e.message);
-        // context.done(null, 'FAILURE');
-        callback(null, 'FAILURE');
     });
 };
