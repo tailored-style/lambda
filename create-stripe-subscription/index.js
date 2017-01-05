@@ -4,6 +4,7 @@ var http = require('https');
 var url = require('url');
 var querystring = require('querystring');
 
+var SUBSCRIPTIONS_API_BASE_URL = process.env.SUBSCRIPTIONS_API_BASE_URL;
 var STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 var STRIPE_API_BASE_URL = process.env.STRIPE_API_BASE_URL;
 var STRIPE_PLAN_ID = process.env.STRIPE_PLAN_ID;
@@ -25,25 +26,57 @@ var parseSubscriptionId = function(msgData) {
     return msgData.subscription.id;
 };
 
-var getSubscriptionData = function(msgData) {
+var getSubscriptionData = function(subscriptionId) {
     console.log("Entering getSubscriptionData");
 
-    // TODO Fetch from Subscriptions Svc
-    return {
-        id: msgData.subscription.id,
-        name: msgData.subscription.name,
-        email: msgData.subscription.email,
-        stripeToken: msgData.subscription.stripeToken
+    var apiUrl = url.resolve(SUBSCRIPTIONS_API_BASE_URL, "subscriptions/"+subscriptionId);
+    var parsedUrl = url.parse(apiUrl);
+    var reqOptions = {
+        protocol: parsedUrl.protocol,
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.path,
+        port: parsedUrl.port,
+        method: 'GET',
     };
+
+	console.log("Subscriptions API request options:", reqOptions);
+
+    return new Promise(function(fulfill, reject) {
+        var req = http.request(reqOptions, (res) => {
+            console.log("Recieved a response with code", res.statusCode);
+            fulfill(res);
+        });
+
+        req.on('error', reject);
+        req.end();
+    })
+    .then(function(res) {
+        // Reject on any non-200 response
+        if (res.statusCode >= 300) {
+            getResponseContent(res);
+            throw new Error(`Unexpected status code from Subscriptions Service: ${res.statusCode} ${res.statusMessage}`);
+        }
+
+        return res;
+    })
+    .then(getResponseContent).then(JSON.parse)
+    .then((json) => {
+        return {
+            id: json.id,
+            name: json.name,
+            email: json.email,
+            stripeToken: json.stripeToken
+        };
+    });
 };
 
 var makeStripeRequest = function(path, requestPayload) {
     console.log("Entering makeStripeRequest");
 
-    var subscriptionUrl = url.resolve(STRIPE_API_BASE_URL, path);
+    var apiUrl = url.resolve(STRIPE_API_BASE_URL, path);
 
     var content = querystring.stringify(requestPayload);
-    var parsedUrl = url.parse(subscriptionUrl);
+    var parsedUrl = url.parse(apiUrl);
     var reqOptions = {
         protocol: parsedUrl.protocol,
         hostname: parsedUrl.hostname,
@@ -74,7 +107,7 @@ var makeStripeRequest = function(path, requestPayload) {
     .then(function(res) {
         // Reject on any non-200 response
         if (res.statusCode >= 300) {
-            getResponseContent(res)
+            getResponseContent(res);
             throw new Error(`Unexpected status code from Stripe: ${res.statusCode} ${res.statusMessage}`);
         }
 
@@ -104,7 +137,7 @@ var createCustomer = function(subscription) {
         return {
             id: customer.id
         };
-    })
+    });
 };
 
 var getResponseContent = function(res) {
@@ -150,12 +183,15 @@ exports.handler = (event, context, callback) => {
     
     var msgData = getMessageData(event);
     var subscriptionId = parseSubscriptionId(msgData);
-    var subscription = getSubscriptionData(msgData);
-    
-    createCustomer(subscription)
+
+    getSubscriptionData(subscriptionId)
+    .then((subscription) => {
+        console.log("Received subscription data", JSON.stringify(subscription));
+        return createCustomer(subscription);
+    })
     .then((stripeCustomer) => {
-       console.log("Created Stripe customer", stripeCustomer.id);
-       return createSubscription(stripeCustomer.id);
+        console.log("Created Stripe customer", stripeCustomer.id);
+        return createSubscription(stripeCustomer.id);
     })
     .then((stripeSubscription) => {
         console.log("Created Stripe Subscription", stripeSubscription.id);
